@@ -10,3 +10,7 @@ export interface Minion {
   isAccept?: boolean
   isCheck?: boolean
 }
+
+export interface MinionsObject {
+  [x: string]: Minion
+}

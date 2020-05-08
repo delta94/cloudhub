@@ -1,5 +1,5 @@
 // Libraries
-import React, {PureComponent} from 'react'
+import React, {PureComponent, Dispatch} from 'react'
 import {connect} from 'react-redux'
 import _ from 'lodash'
 import yaml from 'js-yaml'
@@ -10,12 +10,6 @@ import AgentMinionsTable from 'src/agent_admin/components/AgentMinionsTable'
 import AgentMinionsConsole from 'src/agent_admin/components/AgentMinionsConsole'
 import AgentMinionsModal from 'src/agent_admin/components/AgentMinionsModal'
 
-// APIs
-import {
-  getMinionKeyListAll,
-  getMinionsIP,
-  getMinionsOS,
-} from 'src/agent_admin/apis'
 // SaltStack
 import {
   getLocalGrainsItem,
@@ -24,19 +18,29 @@ import {
   runDeleteKey,
 } from 'src/shared/apis/saltStack'
 
+// Action
+import {
+  getMinionKeyListAllAsync,
+  getMinionsIPAsync,
+  getMinionsOSAsync,
+} from 'src/agent_admin/actions'
+
 // Notification
 import {notify as notifyAction} from 'src/shared/actions/notifications'
-import {notifyAgentConnectFailed} from 'src/shared/copy/notifications'
 
 // Constants
 import {HANDLE_HORIZONTAL} from 'src/shared/constants'
 
 // Types
 import {RemoteDataState, Notification, NotificationFunc} from 'src/types'
-import {Minion} from 'src/agent_admin/type'
+import {Minion, MinionsObject} from 'src/agent_admin/type'
 
 // Decorators
 import {ErrorHandling} from 'src/shared/decorators/errors'
+
+// Error
+// import {errorThrown} from 'src/shared/actions/errors'
+import {ErrorThrownAction} from 'src/types/actions/errors'
 
 interface Props {
   notify: (message: Notification | NotificationFunc) => void
@@ -44,6 +48,20 @@ interface Props {
   currentUrl: string
   saltMasterUrl: string
   saltMasterToken: string
+  getMinionKeyListAllAsync: (
+    pUrl: string,
+    pToken: string
+  ) => (dispatch: Dispatch<ErrorThrownAction>) => Promise<MinionsObject>
+  getMinionsIPAsync: (
+    pUrl: string,
+    pToken: string,
+    minions: MinionsObject
+  ) => (dispatch: Dispatch<ErrorThrownAction>) => Promise<MinionsObject>
+  getMinionsOSAsync: (
+    pUrl: string,
+    pToken: string,
+    minions: MinionsObject
+  ) => (dispatch: Dispatch<ErrorThrownAction>) => Promise<MinionsObject>
 }
 interface State {
   MinionsObject: {[x: string]: Minion}
@@ -56,7 +74,7 @@ interface State {
 
 @ErrorHandling
 export class AgentMinions extends PureComponent<Props, State> {
-  constructor(props) {
+  constructor(props: Props) {
     super(props)
     this.state = {
       minionLog: '<< Empty >>',
@@ -67,42 +85,60 @@ export class AgentMinions extends PureComponent<Props, State> {
       focusedHost: '',
     }
   }
-
-  getWheelKeyListAll = async () => {
-    const {notify, saltMasterUrl, saltMasterToken} = this.props
+  public getWheelKeyListAll = async ({
+    saltMasterUrl,
+    saltMasterToken,
+  }: {
+    saltMasterUrl: string
+    saltMasterToken: string
+  }) => {
     try {
-      const response = await getMinionKeyListAll(saltMasterUrl, saltMasterToken)
-      const updateMinionsIP = await getMinionsIP(
+      const {
+        getMinionKeyListAllAsync,
+        getMinionsIPAsync,
+        getMinionsOSAsync,
+      } = this.props
+
+      const response: MinionsObject = await getMinionKeyListAllAsync(
+        saltMasterUrl,
+        saltMasterToken
+      )
+
+      console.log({response})
+      const updateMinionsIP = await getMinionsIPAsync(
         saltMasterUrl,
         saltMasterToken,
         response
       )
-      const newMinions = await getMinionsOS(
+
+      return await getMinionsOSAsync(
         saltMasterUrl,
         saltMasterToken,
         updateMinionsIP
       )
+    } catch (error) {
+      console.error(error)
+      throw error
+    }
+  }
+
+  public async componentWillMount() {
+    const {saltMasterUrl, saltMasterToken} = this.props
+
+    try {
+      this.setState({minionsPageStatus: RemoteDataState.Loading})
+      const newMinions = await this.getWheelKeyListAll({
+        saltMasterUrl,
+        saltMasterToken,
+      })
 
       this.setState({
         MinionsObject: newMinions,
         minionsPageStatus: RemoteDataState.Done,
       })
-    } catch (e) {
-      this.setState({
-        minionsPageStatus: RemoteDataState.Done,
-      })
-      notify(notifyAgentConnectFailed('Token is not valid.'))
-    }
-  }
-
-  public async componentWillMount() {
-    const {notify, saltMasterToken} = this.props
-    if (saltMasterToken !== null && saltMasterToken !== '') {
-      this.getWheelKeyListAll()
-      this.setState({minionsPageStatus: RemoteDataState.Loading})
-    } else {
-      this.setState({minionsPageStatus: RemoteDataState.Done})
-      notify(notifyAgentConnectFailed('Token is not valid.'))
+    } catch (error) {
+      console.log(error)
+      throw error
     }
   }
 
@@ -112,8 +148,22 @@ export class AgentMinions extends PureComponent<Props, State> {
         this.props.saltMasterToken !== '' &&
         this.props.saltMasterToken !== null
       ) {
-        this.getWheelKeyListAll()
-        this.setState({minionsPageStatus: RemoteDataState.Loading})
+        try {
+          this.setState({minionsPageStatus: RemoteDataState.Loading})
+          const {saltMasterUrl, saltMasterToken} = this.props
+          const newMinions = await this.getWheelKeyListAll({
+            saltMasterUrl,
+            saltMasterToken,
+          })
+
+          this.setState({
+            MinionsObject: newMinions,
+            minionsPageStatus: RemoteDataState.Done,
+          })
+        } catch (error) {
+          console.error(error)
+          throw error
+        }
       } else if (
         this.props.saltMasterToken === null ||
         this.props.saltMasterToken === ''
@@ -123,7 +173,7 @@ export class AgentMinions extends PureComponent<Props, State> {
     }
   }
 
-  onClickTableRowCall = (host: string) => () => {
+  private onClickTableRowCall = (host: string) => async () => {
     const {saltMasterUrl, saltMasterToken} = this.props
     const {MinionsObject} = this.state
     this.setState({
@@ -132,17 +182,21 @@ export class AgentMinions extends PureComponent<Props, State> {
     })
 
     if (MinionsObject[host].status === 'Accept') {
-      const getLocalGrainsItemPromise = getLocalGrainsItem(
-        saltMasterUrl,
-        saltMasterToken,
-        host
-      )
-      getLocalGrainsItemPromise.then(pLocalGrainsItemData => {
+      try {
+        const {data} = await getLocalGrainsItem(
+          saltMasterUrl,
+          saltMasterToken,
+          host
+        )
+
         this.setState({
-          minionLog: yaml.dump(pLocalGrainsItemData.data.return[0][host]),
+          minionLog: yaml.dump(data.return[0][host]),
           minionsPageStatus: RemoteDataState.Done,
         })
-      })
+      } catch (error) {
+        console.error(error)
+        throw error
+      }
     } else {
       this.setState({
         minionLog: '',
@@ -151,48 +205,61 @@ export class AgentMinions extends PureComponent<Props, State> {
     }
   }
 
-  handleWheelKeyCommand = (host: string, cmdstatus: string) => {
+  private handleWheelKeyCommand = (
+    host: string,
+    cmdstatus: string
+  ) => async () => {
     const {saltMasterUrl, saltMasterToken} = this.props
     this.setState({minionsPageStatus: RemoteDataState.Loading})
-    if (cmdstatus == 'ReJect') {
-      const getWheelKeyCommandPromise = runRejectKey(
-        saltMasterUrl,
-        saltMasterToken,
-        host
-      )
-
-      getWheelKeyCommandPromise.then(pWheelKeyCommandData => {
-        this.setState({
-          minionLog: yaml.dump(pWheelKeyCommandData.data.return[0]),
+    if (cmdstatus === 'ReJect') {
+      try {
+        const {data} = await runRejectKey(saltMasterUrl, saltMasterToken, host)
+        const newMinions = await this.getWheelKeyListAll({
+          saltMasterUrl,
+          saltMasterToken,
         })
-        this.getWheelKeyListAll()
-      })
-    } else if (cmdstatus == 'Accept') {
-      const getWheelKeyCommandPromise = runAcceptKey(
-        saltMasterUrl,
-        saltMasterToken,
-        host
-      )
 
-      getWheelKeyCommandPromise.then(pWheelKeyCommandData => {
         this.setState({
-          minionLog: yaml.dump(pWheelKeyCommandData.data.return[0]),
+          MinionsObject: newMinions,
+          minionLog: yaml.dump(data.return[0]),
         })
-        this.getWheelKeyListAll()
-      })
-    } else if (cmdstatus == 'Delete') {
-      const getWheelKeyCommandPromise = runDeleteKey(
-        saltMasterUrl,
-        saltMasterToken,
-        host
-      )
+      } catch (error) {
+        console.error(error)
+        throw error
+      }
+    } else if (cmdstatus === 'Accept') {
+      try {
+        const {data} = await runAcceptKey(saltMasterUrl, saltMasterToken, host)
 
-      getWheelKeyCommandPromise.then(pWheelKeyCommandData => {
-        this.setState({
-          minionLog: yaml.dump(pWheelKeyCommandData.data.return[0]),
+        const newMinions = this.getWheelKeyListAll({
+          saltMasterUrl,
+          saltMasterToken,
         })
-        this.getWheelKeyListAll()
-      })
+
+        this.setState({
+          MinionsObject: newMinions,
+          minionLog: yaml.dump(data.return[0]),
+        })
+      } catch (error) {
+        console.error(error)
+        throw error
+      }
+    } else if (cmdstatus === 'Delete') {
+      try {
+        const {data} = await runDeleteKey(saltMasterUrl, saltMasterToken, host)
+        const newMinions = await this.getWheelKeyListAll({
+          saltMasterUrl,
+          saltMasterToken,
+        })
+
+        this.setState({
+          MinionsObject: newMinions,
+          minionLog: yaml.dump(data.return[0]),
+        })
+      } catch (error) {
+        console.error(error)
+        throw error
+      }
     }
   }
 
@@ -295,6 +362,9 @@ export class AgentMinions extends PureComponent<Props, State> {
 }
 
 const mdtp = {
+  getMinionKeyListAllAsync,
+  getMinionsIPAsync,
+  getMinionsOSAsync,
   notify: notifyAction,
 }
 

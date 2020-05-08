@@ -130,7 +130,7 @@
     background: #151515;
     padding: 15px 0 15px 15px;
     border-radius: 5px;
-    height: 100%;
+    height: calc(100% - 45px);
     width: 100%;
 
     .console-zone--pre {

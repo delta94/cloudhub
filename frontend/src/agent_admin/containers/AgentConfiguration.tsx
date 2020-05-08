@@ -219,7 +219,7 @@ export class AgentConfiguration extends PureComponent<
     }
   }
 
-  getWheelKeyListAll = async () => {
+  private getWheelKeyListAll = async () => {
     const {saltMasterUrl, saltMasterToken} = this.props
     const hostListObject = await getMinionKeyListAllAsync(
       saltMasterUrl,
