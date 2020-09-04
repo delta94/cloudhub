@@ -713,6 +713,7 @@ const VMHostsPage = (props: Props): JSX.Element => {
                   parent_name: `${vcIpAddress}/${datacenterName}/${clusterName}/${hostName}`,
                   parent_chart_field: 'vcenter/dcname/clustername/esxhostname',
                   minion: minionName[0],
+                  id: props.id,
                   ...vm,
                 }
 
@@ -757,6 +758,7 @@ const VMHostsPage = (props: Props): JSX.Element => {
                 index: i,
                 level: 3,
                 type: 'vm',
+                id: props.id,
                 parent_name: `${vcIpAddress}/${datacenterName}/${hostName}`,
                 parent_chart_field: 'vcenter/dcname/esxhostname',
                 minion: minionName[0],
@@ -794,7 +796,7 @@ const VMHostsPage = (props: Props): JSX.Element => {
     vcenter[vcIpAddress] = {
       ...vcenter[vcIpAddress],
 
-      buttons: [updateBtn(vcIpAddress), removeBtn(props.id, props.host)],
+      buttons: [updateBtn(props.id), removeBtn(props.id, props.host)],
       cpu_usage:
         vcCpuUsage.length > 0 ? vcCpuUsage.reduce((sum, c) => sum + c) : [],
       cpu_space:
